@@ -93,6 +93,3 @@ else:
             song["track"]["album"]["name"],
         ]
         sheet.append_row(row)
-
-# http://localhost/?code=AQDVfWBbBP8a194BBLfSsLFNfPjlWbA3L0_OrKXQo7PJc7RjkvfkXooxpveGGc0_gZ8EsP0IaULMT8Q9rJPgTtqCwwcXP2KoZfZN5DJcIMCxtFR_C3qQ4LCMImPoys_uxp_N8lxsZwryfOLGhcHomXkBzKVf5xv6rehxXxtl6XgpwxWsLlEJ
-# Bearer AQDVfWBbBP8a194BBLfSsLFNfPjlWbA3L0_OrKXQo7PJc7RjkvfkXooxpveGGc0_gZ8EsP0IaULMT8Q9rJPgTtqCwwcXP2KoZfZN5DJcIMCxtFR_C3qQ4LCMImPoys_uxp_N8lxsZwryfOLGhcHomXkBzKVf5xv6rehxXxtl6XgpwxWsLlEJ
