@@ -20,7 +20,9 @@
             "args": [
                 "client_id={client_id_here}",
                 "client_secret={client_secret_here}",
-                "redirect_uri={usually_something_like_http://localhost:9000}"
+                "redirect_uri={usually_something_like_http://localhost:9000}",
+                "top=10",
+                "credentials_file=credentials.json"
             ]
         }
     ]
