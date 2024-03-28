@@ -4,13 +4,13 @@ This Python script allows you to retrieve your most recently liked songs from Sp
 # Prerequisites
 Before running the script, make sure you have the following:
 
-1. *Spotify Developer Account:*
+1. **Spotify Developer Account:**
 Create a Spotify Developer account and register your app to obtain the necessary credentials (client ID, client secret, and redirect URI).
 Set up your Spotify app with the appropriate permissions (e.g., user-library-read).
-2. *Google Service Account Credentials:*
+2. **Google Service Account Credentials:**
 Create a service account in the Google Cloud Console.
 Download the JSON credentials file (e.g., credentials.json) for your service account.
-3. *Google Sheet:*
+3. **Google Sheet:**
 Create a Google Sheet where you want to store your Spotify tracks.
 Note the name of the sheet (replace 'Spotify Saved Tracks' in the script with your actual sheet name).
 
