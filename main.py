@@ -120,3 +120,7 @@ def main():
         credentials_file=args["credentials_file"]
     )
     append_songs_to_google_sheets(songs, sheets_client)
+
+
+if __name__ == "__main__":
+    main()
