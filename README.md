@@ -1,4 +1,4 @@
-# Spotify Playlist Tracker
+# Spotify Sheets Backup
 This Python script allows you to retrieve your most recently liked songs from Spotify and append them to a Google Sheet. It uses the Spotify API and Google Sheets API for authentication and data manipulation.
 
 # Prerequisites
