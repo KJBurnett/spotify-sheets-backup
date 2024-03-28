@@ -113,8 +113,8 @@ def main():
     # app exits if this validation fails.
     validate_args(args)
 
-    authenticate_spotify(args)
-    songs = get_spotify_songs(args["top"])
+    sp = authenticate_spotify(args)
+    songs = get_spotify_songs(sp, args["top"])
 
     sheets_client = authenticate_google_sheets(
         credentials_file=args["credentials_file"]
