@@ -17,13 +17,14 @@ Before running the script, make sure you have the following:
 # Usage
 1. Clone this repository and navigate to the project directory.
 2. Install the required Python packages:
-   <br>`pip install spotipy gspread oauth2client`
+   <br>`pip install -r requirements.txt`
 
 4. Run the script with the necessary command line arguments:
-  <br>`python spotify_playlist_tracker.py client_id=<YOUR_CLIENT_ID> client_secret=<YOUR_CLIENT_SECRET> redirect_uri=<YOUR_REDIRECT_URI>`
+  <br>`python main.py client_id=<YOUR_CLIENT_ID> client_secret=<YOUR_CLIENT_SECRET> redirect_uri=<YOUR_REDIRECT_URI> credentials_file=<YOUR_CREDENTIALS_JSON_FROM_GOOGLE> top=10`
+  <br> Note: `top` is how many most recently liked songs you should grab. This has only been tested up to 50 songs. Increase at your own risk, lol.
 
-5. The script will retrieve your last 10 liked songs from Spotify and check if they are already in your Google Sheet. If not, it will append them to the sheet.
-6. Check your Google Sheet to see the updated list of saved tracks.
+6. The script will retrieve your last 10 liked songs from Spotify and check if they are already in your Google Sheet. If not, it will append them to the sheet.
+7. Check your Google Sheet to see the updated list of saved tracks.
 
 # Notes
 * If all 10 most recently liked songs are already in the spreadsheet, the script will inform you.
