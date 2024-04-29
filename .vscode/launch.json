@@ -12,17 +12,17 @@
             "console": "integratedTerminal"
         },
         {
-            "name": "Run for kburnett",
+            "name": "Run for {username}",
             "type": "debugpy",
             "request": "launch",
             "program": "main.py",
             "console": "integratedTerminal",
             "args": [
-                "client_id={client_id_here}",
-                "client_secret={client_secret_here}",
-                "redirect_uri={usually_something_like_http://localhost:9000}",
-                "top=10",
-                "credentials_file=credentials.json"
+                "client_id={your_client_id}", // Your Spotify client id from the application for your dev web api you created on your Spotify account.
+                "client_secret={your_client_secret}", // Your Spotify client secret. Get it from your Spotify Dev Dashabord and/or see the ../README.md
+                "redirect_uri={your_redirect_uri}", // Your Spotify redirect uri. It's almost always http://localhost:9000 for personal local dev use.
+                "top={your_top}", // The number of most recent (aka top) songs from your liked songs on spotify that you want to pull.
+                "credentials_file={your_credentials_file}"
             ]
         }
     ]

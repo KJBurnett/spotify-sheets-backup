@@ -3,6 +3,7 @@ import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
+from datetime import datetime
 
 
 # Define a function to parse command line arguments
@@ -74,9 +75,20 @@ def append_songs_to_google_sheets(songs, sheets_client):
         3:
     ]  # replace 1 with the index of your 'Title' column
 
-    # Find the last non-empty cell in the column
-    last_song_added = next(
-        (title for title in reversed(title_column_values) if title), None
+    # Get the values of the 'Method Added' column starting from row 4
+    method_added_column_values = sheet.col_values(12)[3:]
+
+    # Filter the titles where corresponding method added is 'Auto Added'
+    song_titles_only_added_automatically = [
+        title
+        for title, method in zip(title_column_values, method_added_column_values)
+        if method == "Auto Added"
+    ]
+
+    # Find the last automatically song's cell in the column
+    last_song_automatically_added = next(
+        (title for title in reversed(song_titles_only_added_automatically) if title),
+        None,
     )
 
     # Get the index of the last song added in the last n number of songs retrieved
@@ -84,7 +96,7 @@ def append_songs_to_google_sheets(songs, sheets_client):
         (
             index
             for (index, d) in enumerate(songs)
-            if d["track"]["name"] == last_song_added
+            if d["track"]["name"] == last_song_automatically_added
         ),
         None,
     )
@@ -100,11 +112,35 @@ def append_songs_to_google_sheets(songs, sheets_client):
         # Append the remaining songs to the Google Sheet
         for song in songs[index + 1 :]:
             row = [
-                song["track"]["name"],
-                song["track"]["artists"][0]["name"],
-                song["track"]["album"]["name"],
+                song["track"]["name"],  # Title
+                song["track"]["artists"][0]["name"],  # Artist
+                song["track"]["album"]["name"],  # Album
+                None,  # Art
+                parseSpotifySongUrl(song),  # Link (Typically a Spotify track url)
+                None,  # Aquirement Status
+                None,  # Quality
+                None,  # Addiional Header. Ignore.
+                None,  # Triaged
+                None,  # Notes
+                "Auto Added",  # Method Added
+                None,  # Torrent Links
+                getCurrentDatetime(),  # Date Added
             ]
             sheet.append_row(row)
+
+
+def parseSpotifySongUrl(song):
+    spotifyUrlTemplate = "https://open.spotify.com/track/"
+    urlValue = song["track"]["uri"].split(":")[2]
+    return "".join([spotifyUrlTemplate, urlValue])
+
+
+def getCurrentDatetime():
+    now = datetime.now()
+    date_added = now.strftime(
+        "%B %d, %Y at %I:%M%p"
+    )  # Format date as "January 29, 2024 at 01:05PM"
+    return date_added
 
 
 def main():
