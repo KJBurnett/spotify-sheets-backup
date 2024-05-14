@@ -85,32 +85,24 @@ def append_songs_to_google_sheets(songs, sheets_client):
         if method == "Auto Added"
     ]
 
-    # Find the last automatically song's cell in the column
-    last_song_automatically_added = next(
-        (title for title in reversed(song_titles_only_added_automatically) if title),
-        None,
-    )
+    # Get the index of the most recent song added in the last n number of songs retrieved
+    index = None
+    for i in range(len(songs) - 1, -1, -1):
+        song_name = songs[i]["track"]["name"]
+        if song_name in song_titles_only_added_automatically:
+            index = i
+            break
 
-    # Get the index of the last song added in the last n number of songs retrieved
-    index = next(
-        (
-            index
-            for (index, d) in enumerate(songs)
-            if d["track"]["name"] == last_song_automatically_added
-        ),
-        None,
-    )
-
-    max_song_index = len(songs) - 1
-    if (
-        index == None or index == max_song_index
-    ):  # 1 song less than the total number of songs means they all are already in the spreadsheet.
-        print(
-            f"All {len(songs)} most recently liked songs are already in the spreadsheet."
-        )
+    # If index is still None, no intersecting song was found
+    if index is None:
+        print("No intersecting song was found.")
     else:
-        # Append the remaining songs to the Google Sheet
+        print("Index of intersecting song:", index)
+
+    # If there are remaining songs, append them to the Google Sheet
+    if index is not None and index < len(songs) - 1:
         for song in songs[index + 1 :]:
+            # Construct row data for appending to the Google Sheet
             row = [
                 song["track"]["name"],  # Title
                 song["track"]["artists"][0]["name"],  # Artist
@@ -127,6 +119,10 @@ def append_songs_to_google_sheets(songs, sheets_client):
                 getCurrentDatetime(),  # Date Added
             ]
             sheet.append_row(row)
+    else:
+        print(
+            f"All {len(songs)} most recently liked songs are already in the spreadsheet."
+        )
 
 
 def parseSpotifySongUrl(song):
