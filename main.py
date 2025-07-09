@@ -1,9 +1,25 @@
+# File: main.py
+
+"""
+The `main` function in this script handles:
+- Setting up working dir (`os.chdir(script_dir)`).
+- Parsing command line arguments.
+- Validating parsed args (exits if invalid).
+- Authenticating Spotify access via `authenticate_spotify`.
+- Fetching top songs from Spotify based on user preferences.
+- Authenticating Google Sheets using OAuth2 client flow through `authenticate_google_sheets` with credentials file specified in CLI.
+- Interacting w/ target spreadsheet to append fetched Spotify songs at end of given range within worksheet.
+Overall purpose: Automates tracking favorite music trends across short/medium/long term directly into shared docs via bridge b/w Spotify & Google Sheets services.
+"""
+
+import os
 import sys
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-from datetime import datetime
+import json
+from src.song import parseSpotifySongUrl, getCurrentDatetime
 
 
 # Define a function to parse command line arguments
@@ -12,6 +28,24 @@ def parse_args(args):
     for arg in args:
         key, value = arg.split("=")
         arg_dict[key] = value
+
+    # Check if required arguments are missing
+    required_args = ["client_id", "client_secret", "redirect_uri", "credentials_file"]
+    missing_args = [arg for arg in required_args if arg not in arg_dict]
+
+    if missing_args:
+        # If any required arguments are missing, load from config.json
+        config_file = "config.json"
+        if os.path.exists(config_file):
+            with open(config_file, "r") as file:
+                config = json.load(file)
+                arg_dict.update(config)
+        else:
+            print(
+                f"Error: {', '.join(missing_args)} are not provided and config.json is missing."
+            )
+            sys.exit(1)
+
     return arg_dict
 
 
@@ -44,7 +78,29 @@ def authenticate_spotify(args):
 
 
 def get_spotify_songs(sp, top=10):
-    results = sp.current_user_saved_tracks(limit=top)
+    import spotipy
+    import requests
+
+    results = None
+    try:
+        results = sp.current_user_saved_tracks(limit=top)
+    except (spotipy.oauth2.SpotifyOauthError, requests.exceptions.HTTPError) as e:
+        print(
+            "Spotify authentication error detected (likely due to revoked/expired token).\nAttempting to remove .cache and prompting for re-authentication..."
+        )
+        cache_path = ".cache"
+        import os
+
+        if os.path.exists(cache_path):
+            os.remove(cache_path)
+            print(
+                "Removed .cache file. Please re-run the script to re-authenticate with Spotify."
+            )
+        else:
+            print(
+                "No .cache file found to remove. Please check your credentials and re-authenticate."
+            )
+        sys.exit(1)
     songs = []
     for idx, item in enumerate(results["items"]):
         track = item["track"]
@@ -67,8 +123,18 @@ def authenticate_google_sheets(credentials_file):
 
 
 def append_songs_to_google_sheets(songs, sheets_client):
-    # Open the Google Sheet (replace 'Your_Sheet_Name' with your actual sheet name)
-    sheet = sheets_client.open("Spotify Saved Tracks").sheet1
+    import gspread
+
+    try:
+        # Open the Google Sheet (replace 'Your_Sheet_Name' with your actual sheet name)
+        sheet = sheets_client.open("Music Saved Tracks").sheet1
+    except gspread.exceptions.SpreadsheetNotFound:
+        print(
+            "Error: Google Sheet 'Music Saved Tracks' not found or access denied.\n"
+            "- Make sure the sheet exists in your Google Drive.\n"
+            "- Make sure you have shared the sheet with your service account email (found in your credentials file).\n"
+            "- You can also change the sheet name in the script if needed."
+        )
 
     # Get the values of the 'Title' column starting from row 4
     title_column_values = sheet.col_values(2)[
@@ -125,21 +191,11 @@ def append_songs_to_google_sheets(songs, sheets_client):
         )
 
 
-def parseSpotifySongUrl(song):
-    spotifyUrlTemplate = "https://open.spotify.com/track/"
-    urlValue = song["track"]["uri"].split(":")[2]
-    return "".join([spotifyUrlTemplate, urlValue])
-
-
-def getCurrentDatetime():
-    now = datetime.now()
-    date_added = now.strftime(
-        "%B %d, %Y at %I:%M%p"
-    )  # Format date as "January 29, 2024 at 01:05PM"
-    return date_added
-
-
 def main():
+    # Ensure working directory is the same as main.py
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    os.chdir(script_dir)
+
     # Parse command line arguments
     args = parse_args(sys.argv[1:])
     # app exits if this validation fails.
