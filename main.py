@@ -1,77 +1,91 @@
 # File: main.py
 
 """
-The `main` function in this script handles:
-- Setting up working dir (`os.chdir(script_dir)`).
-- Parsing command line arguments.
-- Validating parsed args (exits if invalid).
-- Authenticating Spotify access via `authenticate_spotify`.
-- Fetching top songs from Spotify based on user preferences.
-- Authenticating Google Sheets using OAuth2 client flow through `authenticate_google_sheets` with credentials file specified in CLI.
-- Interacting w/ target spreadsheet to append fetched Spotify songs at end of given range within worksheet.
-Overall purpose: Automates tracking favorite music trends across short/medium/long term directly into shared docs via bridge b/w Spotify & Google Sheets services.
+This script serves as a multi-tool for managing a music library backup.
+Its capabilities, controlled by command-line flags, include:
+- Backing up recently liked Spotify songs to a Google Sheet and a local Excel file.
+- Scanning a local music directory to cross-reference with the Google Sheet and mark songs as "acquired" and "triaged".
+- Performing a full reset of the local Excel file to match the Google Sheet exactly.
 """
 
 import os
 import sys
+import argparse
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import json
 from src.song import parseSpotifySongUrl, getCurrentDatetime
-
+from excel import append_row_to_excel, reset_excel_from_google_sheet, update_excel_row
+from src.local_scanner import scan_music_library
 
 # Define a function to parse command line arguments
-def parse_args(args):
-    arg_dict = {}
-    for arg in args:
-        key, value = arg.split("=")
-        arg_dict[key] = value
+def parse_cli_args():
+    """Parse command line arguments using argparse."""
+    parser = argparse.ArgumentParser(description="Spotify to Google Sheets backup script.")
+    
+    # Spotify Credentials
+    parser.add_argument("--client_id", help="Spotify client ID.")
+    parser.add_argument("--client_secret", help="Spotify client secret.")
+    parser.add_argument("--redirect_uri", help="Spotify redirect URI.")
+    
+    # Google Credentials
+    parser.add_argument("--credentials_file", help="Path to Google Sheets credentials file.")
 
-    # Check if required arguments are missing
-    required_args = ["client_id", "client_secret", "redirect_uri", "credentials_file"]
-    missing_args = [arg for arg in required_args if arg not in arg_dict]
+    # Operational Flags
+    parser.add_argument("--backup-tracks", action="store_true", help="Run the Spotify backup process.")
+    parser.add_argument("--scan-local", action="store_true", help="Scan local music files.")
+    parser.add_argument("--reset-excel", action="store_true", help="Reset the local Excel file from the Google Sheet.")
 
-    if missing_args:
-        # If any required arguments are missing, load from config.json
-        config_file = "config.json"
-        if os.path.exists(config_file):
-            with open(config_file, "r") as file:
-                config = json.load(file)
-                arg_dict.update(config)
-        else:
-            print(
-                f"Error: {', '.join(missing_args)} are not provided and config.json is missing."
-            )
-            sys.exit(1)
+    # Options
+    parser.add_argument("--top", type=int, default=10, help="Number of recent songs to fetch from Spotify.")
+    parser.add_argument("--scan-path", help="Path to local music library for scanning.")
+    parser.add_argument("--mode", choices=['scan', 'update'], default='scan', help="Mode for scanning local files ('scan' for dry-run, 'update' to apply changes).")
 
-    return arg_dict
+    args = parser.parse_args()
 
+    # Load from config.json if essential args are missing
+    config_args = {}
+    config_file = "config.json"
+    if os.path.exists(config_file):
+        with open(config_file, "r") as file:
+            config = json.load(file)
+            # config is a dictionary with a single key "args" which is a list of strings
+            for arg in config.get("args", []):
+                key, value = arg.split("=", 1)
+                config_args[key] = value
+
+    # Override config with command line args
+    for key, value in vars(args).items():
+        if value is not None:
+            config_args[key] = value
+    
+    # Convert back to a namespace for consistency
+    final_args = argparse.Namespace(**config_args)
+
+    return final_args
 
 # Check if all required arguments are provided
 def validate_args(args):
     required_args = ["client_id", "client_secret", "redirect_uri", "credentials_file"]
     for arg in required_args:
-        if arg not in args:
-            print(f"Error: {arg} is not provided.")
+        if not hasattr(args, arg) or getattr(args, arg) is None:
+            print(f"Error: {arg} is not provided in CLI arguments or config.json.")
             sys.exit(1)
 
 
 def authenticate_spotify(args):
     # Assign command line arguments to variables
     scope = "user-library-read"
-    client_id = args["client_id"]
-    client_secret = args["client_secret"]
-    redirect_uri = args["redirect_uri"]
-
+    
     # Setup Spotify object...
     sp = spotipy.Spotify(
         auth_manager=SpotifyOAuth(
             scope=scope,
-            client_id=client_id,
-            client_secret=client_secret,
-            redirect_uri=redirect_uri,
+            client_id=args.client_id,
+            client_secret=args.client_secret,
+            redirect_uri=args.redirect_uri,
         )
     )
     return sp
@@ -122,73 +136,76 @@ def authenticate_google_sheets(credentials_file):
     return client
 
 
-def append_songs_to_google_sheets(songs, sheets_client):
-    import gspread
-
+def append_songs_to_google_sheets(songs, sheet):
     try:
-        # Open the Google Sheet (replace 'Your_Sheet_Name' with your actual sheet name)
-        sheet = sheets_client.open("Music Saved Tracks").sheet1
-    except gspread.exceptions.SpreadsheetNotFound:
-        print(
-            "Error: Google Sheet 'Music Saved Tracks' not found or access denied.\n"
-            "- Make sure the sheet exists in your Google Drive.\n"
-            "- Make sure you have shared the sheet with your service account email (found in your credentials file).\n"
-            "- You can also change the sheet name in the script if needed."
-        )
+        all_values = sheet.get_all_values()
+        headers = all_values[3]  # Headers on row 4
+        sheet_records = all_values[4:]  # Data starts on row 5
 
-    # Get the values of the 'Title' column starting from row 4
-    title_column_values = sheet.col_values(2)[
-        3:
-    ]  # replace 1 with the index of your 'Title' column
+        # Create a set of existing songs for efficient lookup
+        existing_songs = set()
+        title_col = headers.index("Title")
+        artist_col = headers.index("Artist")
+        for row in sheet_records:
+            if len(row) > title_col and len(row) > artist_col:
+                existing_songs.add((row[title_col], row[artist_col]))
 
-    # Get the values of the 'Method Added' column starting from row 4
-    method_added_column_values = sheet.col_values(12)[3:]
+    except (ValueError, IndexError) as e:
+        print(f"Error reading sheet structure: {e}")
+        return
 
-    # Filter the titles where corresponding method added is 'Auto Added'
-    song_titles_only_added_automatically = [
-        title
-        for title, method in zip(title_column_values, method_added_column_values)
-        if method == "Auto Added"
-    ]
+    songs_to_add = []
+    for song in songs:
+        song_title = song["track"]["name"]
+        song_artist = song["track"]["artists"][0]["name"]
+        if (song_title, song_artist) not in existing_songs:
+            songs_to_add.append(song)
 
-    # Get the index of the most recent song added in the last n number of songs retrieved
-    index = None
-    for i in range(len(songs) - 1, -1, -1):
-        song_name = songs[i]["track"]["name"]
-        if song_name in song_titles_only_added_automatically:
-            index = i
-            break
-
-    # If index is still None, no intersecting song was found
-    if index is None:
-        print("No intersecting song was found.")
-    else:
-        print("Index of intersecting song:", index)
-
-    # If there are remaining songs, append them to the Google Sheet
-    if index is not None and index < len(songs) - 1:
-        for song in songs[index + 1 :]:
-            # Construct row data for appending to the Google Sheet
-            row = [
-                song["track"]["name"],  # Title
-                song["track"]["artists"][0]["name"],  # Artist
-                song["track"]["album"]["name"],  # Album
-                None,  # Art
-                parseSpotifySongUrl(song),  # Link (Typically a Spotify track url)
-                None,  # Aquirement Status
-                None,  # Quality
-                None,  # Addiional Header. Ignore.
-                None,  # Triaged
-                None,  # Notes
-                "Auto Added",  # Method Added
-                None,  # Torrent Links
-                getCurrentDatetime(),  # Date Added
-            ]
-            sheet.append_row(row)
+    if songs_to_add:
+        print(f"Found {len(songs_to_add)} new songs to add.")
+        for song in songs_to_add:
+            # Dynamically build the row based on headers
+            row_data_map = {
+                "Date Added": getCurrentDatetime(),
+                "Title": song["track"]["name"],
+                "Artist": song["track"]["artists"][0]["name"],
+                "Album": song["track"]["album"]["name"],
+                "Spotify Link": parseSpotifySongUrl(song),
+                "Method Added": "Auto Added",
+            }
+            
+            # Ensure all headers are present in the final row data
+            final_row_data = [row_data_map.get(header, "") for header in headers]
+            
+            sheet.append_row(final_row_data)
+            append_row_to_excel(final_row_data)
     else:
         print(
             f"All {len(songs)} most recently liked songs are already in the spreadsheet."
         )
+
+def run_spotify_backup(args, sheet):
+    """Handles the logic for backing up Spotify tracks."""
+    print("Running Spotify backup...")
+    validate_args(args)
+    sp = authenticate_spotify(args)
+    songs = get_spotify_songs(sp, int(args.top))
+    append_songs_to_google_sheets(songs, sheet)
+    print("Spotify backup complete.")
+
+from src.local_scanner import scan_music_library
+def run_local_scanner(args, sheet):
+    """Handles the logic for scanning local music files."""
+    if not args.scan_path:
+        print("Error: --scan-path is required for --scan-local.")
+        sys.exit(1)
+    scan_music_library(sheet, args.scan_path.strip('"'), args.mode)
+
+
+def run_excel_reset(args, sheet):
+    """Handles the logic for resetting the Excel file."""
+    print("Resetting local Excel file from Google Sheet...")
+    reset_excel_from_google_sheet(sheet)
 
 
 def main():
@@ -196,18 +213,38 @@ def main():
     script_dir = os.path.dirname(os.path.abspath(__file__))
     os.chdir(script_dir)
 
-    # Parse command line arguments
-    args = parse_args(sys.argv[1:])
-    # app exits if this validation fails.
-    validate_args(args)
+    args = parse_cli_args()
 
-    sp = authenticate_spotify(args)
-    songs = get_spotify_songs(sp, args["top"])
+    # Authenticate Google Sheets once if any action requires it
+    sheet = None
+    if args.backup_tracks or args.scan_local or args.reset_excel:
+        validate_args(args) # a subset of args are needed for sheets
+        sheets_client = authenticate_google_sheets(
+            credentials_file=args.credentials_file
+        )
+        try:
+            sheet = sheets_client.open("Music Saved Tracks").sheet1
+        except gspread.exceptions.SpreadsheetNotFound:
+            print(
+                "Error: Google Sheet 'Music Saved Tracks' not found or access denied.\n"
+                "- Make sure the sheet exists in your Google Drive.\n"
+                "- Make sure you have shared the sheet with your service account email (found in your credentials file)."
+            )
+            sys.exit(1)
 
-    sheets_client = authenticate_google_sheets(
-        credentials_file=args["credentials_file"]
-    )
-    append_songs_to_google_sheets(songs, sheets_client)
+
+    if args.backup_tracks:
+        run_spotify_backup(args, sheet)
+    
+    if args.scan_local:
+        run_local_scanner(args, sheet)
+
+    if args.reset_excel:
+        run_excel_reset(args, sheet)
+
+    if not any([args.backup_tracks, args.scan_local, args.reset_excel]):
+        print("No action specified. Use --backup-tracks, --scan-local, or --reset-excel.")
+        print("Use -h or --help for more information.")
 
 
 if __name__ == "__main__":

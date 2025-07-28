@@ -1,34 +1,95 @@
 # Spotify Sheets Backup
-This Python script allows you to retrieve your most recently liked songs from Spotify and append them to a Google Sheet. It uses the Spotify API and Google Sheets API for authentication and data manipulation.
+
+This Python script is a multi-purpose tool to manage your music library between Spotify, Google Sheets, and a local Excel file. It allows you to:
+-   Retrieve your most recently liked songs from Spotify and append them to a Google Sheet and a local Excel backup.
+-   Scan a local directory of music files and cross-reference it with your Google Sheet, marking songs you've downloaded.
+-   Keep a local Excel file perfectly in sync with your master Google Sheet.
 
 # Prerequisites
+
 Before running the script, make sure you have the following:
 
-1. **Spotify Developer Account:**
-<br>Create a Spotify Developer account and register your app to obtain the necessary credentials (client ID, client secret, and redirect URI).
-<br>Set up your Spotify app with the appropriate permissions (e.g., user-library-read).
-2. **Google Service Account Credentials:**
-<br>Create a service account in the Google Cloud Console.
-<br>Download the JSON credentials file (e.g., credentials.json) for your service account.
-3. **Google Sheet:**
-<br>Create a Google Sheet where you want to store your Spotify tracks.
-<br>Note the name of the sheet (replace 'Spotify Saved Tracks' in the script with your actual sheet name).
+1.  **Spotify Developer Account:**
+    *   Create a Spotify Developer account and register your app to obtain the necessary credentials (client ID, client secret, and redirect URI).
+    *   Set up your Spotify app with the `user-library-read` scope.
+2.  **Google Service Account Credentials:**
+    *   Create a service account in the Google Cloud Console and enable the Google Sheets API.
+    *   Download the JSON credentials file for your service account.
+3.  **Google Sheet:**
+    *   Create a Google Sheet named "Music Saved Tracks".
+    *   Share this sheet with the `client_email` found in your Google service account credentials JSON file.
+    *   The sheet must have a header row with at least the following columns: `Title`, `Artist`, `Acquirement`, `Triaged`.
+
+# Installation
+
+1.  Clone this repository and navigate to the project directory.
+2.  Install the required Python packages:
+    ```bash
+    pip install -r requirements.txt
+    ```
+
+# Configuration
+
+For ease of use, you can create a `config.json` file in the root of the project to store your credentials and default options. The script will automatically load this file, but any command-line arguments you provide will override the values in the file.
+
+**Example `config.json`:**
+```json
+{
+    "args": [
+        "client_id=YOUR_SPOTIFY_CLIENT_ID",
+        "client_secret=YOUR_SPOTIFY_CLIENT_SECRET",
+        "redirect_uri=http://localhost:9000",
+        "credentials_file=path/to/your/google/credentials.json",
+        "top=20"
+    ]
+}
+```
 
 # Usage
-1. Clone this repository and navigate to the project directory.
-2. Install the required Python packages:
-   <br>`pip install -r requirements.txt`
 
-4. Run the script with the necessary command line arguments:
-  <br>`python main.py client_id=<YOUR_CLIENT_ID> client_secret=<YOUR_CLIENT_SECRET> redirect_uri=<YOUR_REDIRECT_URI> credentials_file=<YOUR_CREDENTIALS_JSON_FROM_GOOGLE> top=10`
-  <br> Note: `top` is how many most recently liked songs you should grab. This has only been tested up to 50 songs. Increase at your own risk, lol.
+The script is now controlled by flags to perform different actions.
 
-6. The script will retrieve your last 10 liked songs from Spotify and check if they are already in your Google Sheet. If not, it will append them to the sheet.
-7. Check your Google Sheet to see the updated list of saved tracks.
+### Backing Up Recent Spotify Tracks
 
-# Notes
-* If all 10 most recently liked songs are already in the spreadsheet, the script will inform you.
-* Make sure the Google Sheet has a column named “Title” (adjust the column index in the script if needed).
+This command fetches the 20 most recently liked songs from Spotify and appends any new ones to your Google Sheet and the local `song-list.xlsx` file.
+
+```bash
+python main.py --backup-tracks --top 20
+```
+
+### Scanning Your Local Music Library
+
+This feature scans a local folder of music to see which songs from your spreadsheet you already have downloaded.
+
+**Dry Run (Scan Mode):**
+This command will scan the specified path and show you which songs it found and would mark as "acquired" and "triaged", without actually changing any data.
+
+```bash
+python main.py --scan-local --scan-path "D:\Your\Music\Folder"
+```
+
+**Live Update (Update Mode):**
+By adding `--mode update`, the script will perform the scan and then update both the Google Sheet and the local Excel file with the results.
+
+```bash
+python main.py --scan-local --scan-path "D:\Your\Music\Folder" --mode update
+```
+
+### Synchronizing the Local Excel File
+
+If your local `song-list.xlsx` gets out of sync or you want to create it for the first time, you can use the `--reset-excel` flag. This will completely overwrite the local file with the current data from your Google Sheet.
+
+```bash
+python main.py --reset-excel
+```
+
+### Combining Operations
+
+You can combine flags to perform multiple actions in one go. For example, to back up new tracks and then immediately scan your local library:
+
+```bash
+python main.py --backup-tracks --scan-local --scan-path "D:\Your\Music\Folder"
+```
 
 ----------
 # Initial Setup
